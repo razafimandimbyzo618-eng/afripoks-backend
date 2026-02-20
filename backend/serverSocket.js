@@ -104,7 +104,19 @@ function findPlayerInAllTables(userId, tableId) {
 const serverSocket = (app) => {
     const httpServer = http.createServer(app);
     const socketServer = socketIo(httpServer, {
-        cors: { origin: "*" }
+        cors: { 
+            origin: "*",
+            methods: ["GET", "POST"],
+            credentials: true,
+            allowEIO3: true
+        },
+        transports: ["websocket", "polling"],
+        pingInterval: 25000,
+        pingTimeout: 60000,
+        upgradeTimeout: 10000,
+        allowUpgrades: true,
+        maxHttpBufferSize: 1e6,
+        enablesXDR: true
     });
     // socketServer.use(authenticateSocket);
     
@@ -119,23 +131,40 @@ const serverSocket = (app) => {
     
     socketServer.on("connection", (socket) => {
         console.log(`👤 Utilisateur connecté: ${socket.id}`);
-
-        socket.on("user_connected", (userData) => {
-            connectedUsers.set(socket.id, {
-                socketId: socket.id,
-                userId: userData.userId,
-                username: userData.username,
-                connectedAt: new Date(),
-            });
-
-            // ✅ Envoyer à TOUS les clients (broadcast)
-            socketServer.emit("users_count_update", {
-                total: connectedUsers.size,
-                users: Array.from(connectedUsers.values()),
-            });
-
-            console.log(`✅ ${userData.username} connecté. Total: ${connectedUsers.size}`);
+        console.log(`📡 Transport utilisé: ${socket.conn.transport.name}`);
+        console.log(`🔧 Socket handlers prêts`);
+        
+        // Ajouter des écouteurs d'erreur
+        socket.on('error', (error) => {
+            console.log(`⚠️ Erreur socket pour ${socket.id}:`, error);
         });
+        
+        socket.conn.on('error', (error) => {
+            console.log(`⚠️ Erreur connexion pour ${socket.id}:`, error);
+        });
+
+       socket.on("user_connected", (userData) => {
+    // ✅ Dédupliquer par userId
+    for (const [existingSocketId, existingUser] of connectedUsers.entries()) {
+        if (String(existingUser.userId) === String(userData.userId)) {
+            connectedUsers.delete(existingSocketId);
+        }
+    }
+
+    connectedUsers.set(socket.id, {
+        socketId: socket.id,
+        userId: userData.userId,
+        username: userData.username,
+        connectedAt: new Date(),
+    });
+
+    socketServer.emit("users_count_update", {
+        total: connectedUsers.size,
+        users: Array.from(connectedUsers.values()),
+    });
+
+    console.log(`✅ ${userData.username} connecté. Total authentifiés: ${connectedUsers.size}`);
+});
 
         socket.on("join_table", ({ tableId, userId, username }) => {
             socket.join(`table_${tableId}`);
@@ -429,30 +458,32 @@ const serverSocket = (app) => {
         });
 
         // ✅ ÉCOUTER l'événement disconnect (ne pas l'émettre)
-        socket.on("disconnect", (reason) => {
-            const user = connectedUsers.get(socket.id);
-            
-            if (user) {
-                console.log(`❌ ${user.username} déconnecté (raison: ${reason})`);
-                
-                connectedUsers.delete(socket.id);
-                
-                // Nettoyer les tables
-                tableUsers.forEach((users, tableId) => {
-                    if (users.has(user.userId)) {
-                        users.delete(user.userId);
-                        socketServer.to(`table_${tableId}`).emit("table_users_update", {
-                            tableId,
-                            count: users.size,
-                        });
-                    }
-                });
+    socket.on("disconnect", (reason) => {
+    const user = connectedUsers.get(socket.id);
 
-                socketServer.emit("users_count_update", {
-                    total: connectedUsers.size,
+    if (user) {
+        console.log(`❌ ${user.username} déconnecté. Raison: ${reason}`);
+        connectedUsers.delete(socket.id);
+
+        tableUsers.forEach((users, tableId) => {
+            if (users.has(user.userId)) {
+                users.delete(user.userId);
+                socketServer.to(`table_${tableId}`).emit("table_users_update", {
+                    tableId,
+                    count: users.size,
                 });
             }
         });
+
+        socketServer.emit("users_count_update", {
+            total: connectedUsers.size,
+            users: Array.from(connectedUsers.values()),
+        });
+
+        console.log(`👥 Total authentifiés après déconnexion: ${connectedUsers.size}`);
+    }
+    // ✅ Si user inconnu (pas authentifié), on ignore = pas d'emit parasite
+});
 
     });
 
