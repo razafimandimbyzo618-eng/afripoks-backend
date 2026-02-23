@@ -59,7 +59,7 @@ function findTableWithAvailableSeat(tableId) {
     }
     return null;
 }
-
+//find table by id without checking for free seats
 function findTable(tableId) {
   const sessionMap = pokerTables.get(tableId);
   if (!sessionMap) return null;
