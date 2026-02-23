@@ -181,10 +181,10 @@ const serverSocket = (app) => {
         // Émettre le nombre à tous les clients
         socketServer.emit('connectedUsersUpdate', { count: connectedUsersCount });
         
-        socket.on('joinAnyTable', async ({ tableId, userId, playerCave }) => {
-              let release = null; // ✅ déclaré en dehors du try
-            try {
-                const release = await acquireLock(tableId); // attend son tour
+                socket.on('joinAnyTable', async ({ tableId, userId, playerCave }) => {
+                            let release = null; // ✅ déclaré en dehors du try
+                        try {
+                                release = await acquireLock(tableId); // attend son tour
                 // if (tableLocks.get(tableId)) {
                 //     return socket.emit('joinError', { message: 'La table est temporairement verouillée, réessayez.' });
                 // }
