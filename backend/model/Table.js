@@ -18,6 +18,11 @@ const Table = sequelize.define('Table', {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  gameType: {
+    type: DataTypes.ENUM('holdem', 'omaha'),
+    defaultValue: 'holdem',
+    allowNull: false,
+  },
 }, {
   tableName: 'tablepoker',
   timestamps: true,

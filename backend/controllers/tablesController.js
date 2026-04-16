@@ -8,6 +8,16 @@ exports.findAll = asyncHandler(async (req, res)=> {
         const tables = await Table.findAll();
         const tableIds = tables.map(t => t.id);
         const occupiedSeatsMap = serverSocket.getFreeSits(tableIds);
+        
+        const dataWithActiveInfo = tables.map(t => {
+            const tableData = t.toJSON();
+            const activeTable = serverSocket.findTable(String(t.id));
+            if (activeTable) {
+                tableData.activeGameType = activeTable.gameType;
+            }
+            return tableData;
+        });
+
         for (let i = 1; i <= tables.length; i++) {
           
           if (occupiedSeatsMap.get(i) === undefined) {
@@ -17,7 +27,7 @@ exports.findAll = asyncHandler(async (req, res)=> {
         
         const occupiedSeats = Object.fromEntries(occupiedSeatsMap);
         
-        res.json({message: "all", data: tables, occupiedSeats});
+        res.json({message: "all", data: dataWithActiveInfo, occupiedSeats});
     } catch (error) {
         res.status(401).json('Invalid Email or password');   
     }

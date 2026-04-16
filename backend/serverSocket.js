@@ -506,4 +506,4 @@ const serverSocket = (app) => {
     return httpServer;
 }
 
-module.exports = { serverSocket, getFreeSits, findPlayerInAllTables, getConnectionStats };
+module.exports = { serverSocket, getFreeSits, findPlayerInAllTables, getConnectionStats, findTable };

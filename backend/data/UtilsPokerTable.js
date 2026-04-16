@@ -16,16 +16,22 @@ const ALL_CARDS = [
 
 function completeToFiveCards(input, playersCards, isAutoCompletion) {
   
-  if (!isAutoCompletion || input.length > 5) {
+  if (!isAutoCompletion || input.length >= 5) {
     return input;
   }
 
-  const flatPlayers = playersCards.flat();
-  const usedSet = new Set([...input, ...flatPlayers]
+  // Flatten hole cards for all players
+  const allHoleCards = playersCards.flat();
+  
+  // Create a set of all currently used cards (community + players)
+  const usedSet = new Set([...input, ...allHoleCards]
     .filter(card => card != null)
     .map(card => card.toLowerCase()));
-  const remaining = ALL_CARDS.filter(card => !usedSet.has(card));
 
+  // Filter available cards to ensure no duplicates
+  const remaining = ALL_CARDS.filter(card => !usedSet.has(card.toLowerCase()));
+
+  // Fisher-Yates shuffle
   for (let i = remaining.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [remaining[i], remaining[j]] = [remaining[j], remaining[i]];
