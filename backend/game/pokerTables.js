@@ -801,8 +801,19 @@ class PokerTable {
     }
 
     broadcastState(isStart = false) {
-        const activeSeats = this.getActiveSeats();
         const handInProgress = this.table.isHandInProgress();
+        
+        // Ensure betting round is ended if finished before calculating state
+        if (handInProgress) {
+            if(!this.table.isBettingRoundInProgress() && !this.table.areBettingRoundsCompleted()) {
+                try { 
+                    this.table.endBettingRound(); 
+                    // If we just ended a round, we might need to reset round-specific data
+                } catch(ignored) {}
+            }
+        }
+
+        const activeSeats = this.getActiveSeats();
         const tableId = this.id;
         const button = handInProgress ? this.table.button() : null;
         
@@ -825,9 +836,6 @@ class PokerTable {
 
         let toAct = null;
         if (handInProgress) {
-            if(!this.table.isBettingRoundInProgress() && !this.table.areBettingRoundsCompleted()) {
-                try { this.table.endBettingRound(); } catch(ignored) {}
-            }
             if(this.table.isBettingRoundInProgress()) {
                 toAct = this.table.playerToAct();
             } else if (this.table.areBettingRoundsCompleted()) {
