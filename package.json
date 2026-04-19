@@ -20,7 +20,7 @@
     "express-async-handler": "^1.2.0",
     "http": "^0.0.1-security",
     "jsonwebtoken": "^9.0.2",
-    "mysql2": "^3.14.1",
+    "mysql2": "^3.22.1",
     "nodemon": "^3.1.10",
     "poker-ts": "^1.4.1",
     "pokersolver": "^2.1.4",

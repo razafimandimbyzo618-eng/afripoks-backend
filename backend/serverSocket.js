@@ -327,7 +327,9 @@ const serverSocket = (app) => {
             } finally {
              //   tableLocks.set(tableId, false);
                 lockPromises.delete(tableId); // supprime le lock
-                release();                    // débloque le prochain en attente
+                if (typeof release === 'function') {
+                    release();                    // débloque le prochain en attente
+                }
             }
         });
 
