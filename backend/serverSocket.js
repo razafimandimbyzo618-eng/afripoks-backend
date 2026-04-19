@@ -76,6 +76,9 @@ let getConnectionStats = () => ({
 
 async function createNewTable(tableId) {
     const tableInfo = await Table.findByPk(tableId);
+    if (!tableInfo) {
+        throw new Error(`Table with ID ${tableId} not found`);
+    }
     const newTable = new PokerTable(tableInfo);
     if (!pokerTables.has(tableId)) {
         pokerTables.set(tableId, new Map());
@@ -140,49 +143,61 @@ const serverSocket = (app) => {
         });
 
         socket.on("user_connected", (userData) => {
-            connectedUsers.set(socket.id, {
-                socketId: socket.id,
-                userId: userData.userId,
-                username: userData.username,
-                connectedAt: new Date(),
-            });
+            try {
+                connectedUsers.set(socket.id, {
+                    socketId: socket.id,
+                    userId: userData.userId,
+                    username: userData.username,
+                    connectedAt: new Date(),
+                });
 
-            // ✅ Envoyer à TOUS les clients (broadcast)
-            socketServer.emit("users_count_update", {
-                total: connectedUsers.size,
-                users: Array.from(connectedUsers.values()),
-            });
+                // ✅ Envoyer à TOUS les clients (broadcast)
+                socketServer.emit("users_count_update", {
+                    total: connectedUsers.size,
+                    users: Array.from(connectedUsers.values()),
+                });
 
-            console.log(`✅ ${userData.username} connecté. Total: ${connectedUsers.size}`);
+                console.log(`✅ ${userData.username} connecté. Total: ${connectedUsers.size}`);
+            } catch (err) {
+                console.error("Error in user_connected handler:", err);
+            }
         });
 
         socket.on("join_table", ({ tableId, userId, username }) => {
-            socket.join(`table_${tableId}`);
-            
-            if (!tableUsers.has(tableId)) {
-                tableUsers.set(tableId, new Set());
-            }
-            tableUsers.get(tableId).add(userId);
-
-            socketServer.to(`table_${tableId}`).emit("table_users_update", {
-                tableId,
-                count: tableUsers.get(tableId).size,
-                users: Array.from(tableUsers.get(tableId)),
-            });
-
-            console.log(`🎲 ${username} a rejoint la table ${tableId}`);
-        });
-
-        socket.on("leave_table", ({ tableId, userId }) => {
-            socket.leave(`table_${tableId}`);
-            
-            if (tableUsers.has(tableId)) {
-                tableUsers.get(tableId).delete(userId);
+            try {
+                socket.join(`table_${tableId}`);
                 
+                if (!tableUsers.has(tableId)) {
+                    tableUsers.set(tableId, new Set());
+                }
+                tableUsers.get(tableId).add(userId);
+
                 socketServer.to(`table_${tableId}`).emit("table_users_update", {
                     tableId,
                     count: tableUsers.get(tableId).size,
+                    users: Array.from(tableUsers.get(tableId)),
                 });
+
+                console.log(`🎲 ${username} a rejoint la table ${tableId}`);
+            } catch (err) {
+                console.error("Error in join_table handler:", err);
+            }
+        });
+
+        socket.on("leave_table", ({ tableId, userId }) => {
+            try {
+                socket.leave(`table_${tableId}`);
+                
+                if (tableUsers.has(tableId)) {
+                    tableUsers.get(tableId).delete(userId);
+                    
+                    socketServer.to(`table_${tableId}`).emit("table_users_update", {
+                        tableId,
+                        count: tableUsers.get(tableId).size,
+                    });
+                }
+            } catch (err) {
+                console.error("Error in leave_table handler:", err);
             }
         });
 
@@ -323,7 +338,8 @@ const serverSocket = (app) => {
                 }
 
             } catch(err) {
-                console.error(err);
+                console.error('Join any table error:', err);
+                socket.emit('joinError', { message: 'Une erreur est survenue lors de la tentative de rejoindre la table.' });
             } finally {
              //   tableLocks.set(tableId, false);
                 lockPromises.delete(tableId); // supprime le lock
@@ -397,97 +413,109 @@ const serverSocket = (app) => {
         });
        
         socket.on('sendChatMessage', (data) => {
-            const { tableId, message } = data;
+            try {
+                const { tableId, message } = data;
 
-            // ✅ FIX : Résoudre le nom depuis pokerTables car socket.username
-            // n'est jamais assigné (l'event 'joinTable' n'est pas émis côté client)
-            let senderName = 'Inconnu';
-            let senderId = null;
+                // ✅ FIX : Résoudre le nom depuis pokerTables car socket.username
+                // n'est jamais assigné (l'event 'joinTable' n'est pas émis côté client)
+                let senderName = 'Inconnu';
+                let senderId = null;
 
-            outer:
-            for (const sessionMap of pokerTables.values()) {
-                for (const table of sessionMap.values()) {
-                    const player = table.players.get(socket.id);
-                    if (player) {
-                        senderName = player.user.name || player.user.username || player.user.email || 'Inconnu';
-                        senderId = player.user.id;
-                        break outer;
+                outer:
+                for (const sessionMap of pokerTables.values()) {
+                    for (const table of sessionMap.values()) {
+                        const player = table.players.get(socket.id);
+                        if (player) {
+                            senderName = player.user.name || player.user.username || player.user.email || 'Inconnu';
+                            senderId = player.user.id;
+                            break outer;
+                        }
                     }
                 }
+
+                console.log(`💬 Message de ${senderName} (${senderId}) sur table ${tableId}:`, message);
+
+                const chatMessage = {
+                    userId: senderId,
+                    username: senderName,
+                    message: message,
+                    timestamp: new Date(),
+                };
+
+                if (!tableChatHistory.has(tableId)) {
+                    tableChatHistory.set(tableId, []);
+                }
+                const history = tableChatHistory.get(tableId);
+                history.push(chatMessage);
+                if (history.length > MAX_MESSAGES_PER_TABLE) {
+                    history.shift();
+                    console.log(`🗑️ Message le plus ancien supprimé pour la table ${tableId}`);
+                }
+                console.log(`💾 Historique table ${tableId}: ${history.length}/${MAX_MESSAGES_PER_TABLE} messages`);
+
+                // ✅ FIX : Bonne room avec préfixe "table-" (cohérent avec socket.join)
+                socketServer.to(`table-${tableId}`).emit('chatMessage', chatMessage);
+            } catch (err) {
+                console.error("Error in sendChatMessage handler:", err);
             }
-
-            console.log(`💬 Message de ${senderName} (${senderId}) sur table ${tableId}:`, message);
-
-            const chatMessage = {
-                userId: senderId,
-                username: senderName,
-                message: message,
-                timestamp: new Date(),
-            };
-
-            if (!tableChatHistory.has(tableId)) {
-                tableChatHistory.set(tableId, []);
-            }
-            const history = tableChatHistory.get(tableId);
-            history.push(chatMessage);
-            if (history.length > MAX_MESSAGES_PER_TABLE) {
-                history.shift();
-                console.log(`🗑️ Message le plus ancien supprimé pour la table ${tableId}`);
-            }
-            console.log(`💾 Historique table ${tableId}: ${history.length}/${MAX_MESSAGES_PER_TABLE} messages`);
-
-            // ✅ FIX : Bonne room avec préfixe "table-" (cohérent avec socket.join)
-            socketServer.to(`table-${tableId}`).emit('chatMessage', chatMessage);
         });
 
         socket.on('leaveTable', (data) => {
-            const { tableId } = data;
-            console.log(`👋 Joueur quitte la table ${tableId}`);
-            socket.leave(`table-${tableId}`);
-            
-            const sessionMap = pokerTables.get(tableId);
-            const playersCount = sessionMap
-                ? [...sessionMap.values()].reduce((sum, t) => sum + t.players.size, 0)
-                : 0;
-            
-            if (playersCount === 0) {
-                console.log(`🧹 Table ${tableId} vide, suppression de l'historique`);
-                tableChatHistory.delete(tableId);
+            try {
+                const { tableId } = data;
+                console.log(`👋 Joueur quitte la table ${tableId}`);
+                socket.leave(`table-${tableId}`);
+                
+                const sessionMap = pokerTables.get(tableId);
+                const playersCount = sessionMap
+                    ? [...sessionMap.values()].reduce((sum, t) => sum + t.players.size, 0)
+                    : 0;
+                
+                if (playersCount === 0) {
+                    console.log(`🧹 Table ${tableId} vide, suppression de l'historique`);
+                    tableChatHistory.delete(tableId);
+                }
+            } catch (err) {
+                console.error("Error in leaveTable handler:", err);
             }
         });
 
         // ✅ ÉCOUTER l'événement disconnect (ne pas l'émettre)
         socket.on("disconnect", (reason) => {
-            const user = connectedUsers.get(socket.id);
-            
-            if (user) {
-                console.log(`❌ ${user.username} déconnecté (raison: ${reason})`);
+            try {
+                const user = connectedUsers.get(socket.id);
                 
-                connectedUsers.delete(socket.id);
-                
-                // Nettoyer les tables
-                tableUsers.forEach((users, tableId) => {
-                    if (users.has(user.userId)) {
-                        users.delete(user.userId);
-                        socketServer.to(`table_${tableId}`).emit("table_users_update", {
-                            tableId,
-                            count: users.size,
-                        });
-                    }
-                });
+                if (user) {
+                    console.log(`❌ ${user.username} déconnecté (raison: ${reason})`);
+                    
+                    connectedUsers.delete(socket.id);
+                    
+                    // Nettoyer les tables
+                    tableUsers.forEach((users, tableId) => {
+                        if (users.has(user.userId)) {
+                            users.delete(user.userId);
+                            socketServer.to(`table_${tableId}`).emit("table_users_update", {
+                                tableId,
+                                count: users.size,
+                            });
+                        }
+                    });
 
-                socketServer.emit("users_count_update", {
-                    total: connectedUsers.size,
-                });
-                for (const [tid, sessionMap] of pokerTables.entries()) {
-                    for (const [sessionId, table] of sessionMap.entries()) {
-                        if (table.players.has(socket.id)) {
-                            const player = table.players.get(socket.id);
-                            console.log(`💀 Joueur ${player.user.id} déconnecté de la table ${tid}`);
-                            table.handleDisconnect(player.user.id); // selon ta logique métier
+                    socketServer.emit("users_count_update", {
+                        total: connectedUsers.size,
+                    });
+                    for (const [tid, sessionMap] of pokerTables.entries()) {
+                        for (const [sessionId, table] of sessionMap.entries()) {
+                            if (table.players.has(socket.id)) {
+                                const player = table.players.get(socket.id);
+                                console.log(`💀 Joueur ${player.user.id} déconnecté de la table ${tid}`);
+                                table.handleDisconnect(player.user.id); // selon ta logique métier
+                            }
                         }
                     }
-                 }
+                }
+            } catch (err) {
+                console.error("Error in disconnect handler:", err);
             }
         });
 

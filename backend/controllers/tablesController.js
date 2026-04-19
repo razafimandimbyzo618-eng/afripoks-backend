@@ -46,7 +46,6 @@ exports.isUserInTable = asyncHandler(async (req, res) => {
     try {
         const { userId } = req.params;
         const playerTables = playerTablesMap.get(Number(userId));
-        console.log('[USER IN TABLE] result', playerTablesMap);
         
         console.log('[USER IN TABLE] user id', userId);
         console.log('[USER IN TABLE] player table', playerTables);
@@ -54,5 +53,6 @@ exports.isUserInTable = asyncHandler(async (req, res) => {
         res.json(playerTables !== undefined && playerTables.length > 0);
     } catch (error) {
       console.error('[USER IN TABLE] ERR', error);
+      res.status(500).json({ message: 'Internal server error', error: error.message });
     }
 })
