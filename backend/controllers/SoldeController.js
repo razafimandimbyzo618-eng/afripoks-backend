@@ -27,7 +27,6 @@ exports.insertSolde = asyncHandler(async (req, res)=> {
         }
     } catch (error) {
         console.error('[INSERT SOLDE] ERR', error);
-        res.status(500).json({ message: "Erreur lors de l'insertion du solde", error: error.message });
     }
 });
 
@@ -64,7 +63,7 @@ exports.totalSoldes = asyncHandler(async (req, res) => {
         res.json(results[0].total);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ message: "Erreur lors du calcul du total des soldes", error: error.message });
+        res.send('Internal Server Error');
     }
 });
 
@@ -105,6 +104,5 @@ exports.updateSolde = asyncHandler(async (req, res) => {
       res.status(200).json({ message: "Solde mis à jour avec succès.", nouveauSolde: solde.montant });
   } catch (error) {
       console.error('[UPDATE SOLDE] ERR', error);
-      res.status(500).json({ message: "Erreur lors de la mise à jour du solde", error: error.message });
   }
 });

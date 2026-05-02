@@ -2,7 +2,6 @@ const asyncHandler = require("express-async-handler");
 const Table = require("../model/Table");
 const serverSocket = require("../serverSocket");
 const playerTablesMap = require("../game/playerTables");
-const HistoriqueMain = require("../model/HistoriqueMain");
 
 exports.findAll = asyncHandler(async (req, res)=> {
     try {
@@ -47,6 +46,7 @@ exports.isUserInTable = asyncHandler(async (req, res) => {
     try {
         const { userId } = req.params;
         const playerTables = playerTablesMap.get(Number(userId));
+        console.log('[USER IN TABLE] result', playerTablesMap);
         
         console.log('[USER IN TABLE] user id', userId);
         console.log('[USER IN TABLE] player table', playerTables);
@@ -54,50 +54,5 @@ exports.isUserInTable = asyncHandler(async (req, res) => {
         res.json(playerTables !== undefined && playerTables.length > 0);
     } catch (error) {
       console.error('[USER IN TABLE] ERR', error);
-      res.status(500).json({ message: 'Internal server error', error: error.message });
     }
 })
-
-exports.getLastHistory = asyncHandler(async (req, res) => {
-    try {
-        const { id } = req.params;
-        const table = await Table.findByPk(id);
-        
-        if (!table) {
-            return res.status(404).json({ message: "Table non trouvée." });
-        }
-        
-        const historique = await HistoriqueMain.findOne({
-            where: {
-                table_name: table.name
-            },
-            order: [['datetime', 'DESC']]
-        });
-        
-        if (!historique) {
-            return res.status(404).json({ message: "Aucun historique trouvé pour cette table." });
-        }
-        
-        // Extraire tous les noms des joueurs
-        const joueurs = new Set();
-        if (historique.main_joueurs && Array.isArray(historique.main_joueurs)) {
-            historique.main_joueurs.forEach(j => j.pseudo && joueurs.add(j.pseudo));
-        }
-        if (historique.foldes && Array.isArray(historique.foldes)) {
-            historique.foldes.forEach(nom => nom && joueurs.add(nom));
-        }
-        if (historique.gagnants && Array.isArray(historique.gagnants)) {
-            historique.gagnants.forEach(nom => nom && joueurs.add(nom));
-        }
-        
-        const response = {
-            ...historique.toJSON(),
-            joueurs: Array.from(joueurs)
-        };
-        
-        res.json(response);
-    } catch (error) {
-        console.error("Erreur lors de la récupération du dernier historique :", error);
-        res.status(500).json({ message: "Erreur serveur lors de la récupération du dernier historique." });
-    }
-});

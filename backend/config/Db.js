@@ -3,22 +3,17 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
+ console.log('Dialect:', process.env.DB_DIALECT);
+
 const sequelize = new Sequelize(
-  "railway",
-  "root",
-  "PxvrhZVtIbMxpXDQHNMNzpbVlYqvcqJs",
+  process.env.DB_NAME,
+  process.env.DB_USER,
+  process.env.DB_PASSWORD,
   {
-    host: "trolley.proxy.rlwy.net",
-    dialect: "mysql",
-    port: 49162,
-    logging: false,
-    pool: {
-      max: 10,
-      min: 0,
-      acquire: 30000,
-      idle: 10000
-    }
+    host: process.env.DB_HOST,
+    dialect: process.env.DB_DIALECT,
+    logging: true,
   }
 );
-
+//connexion  dot env
 module.exports = sequelize;
