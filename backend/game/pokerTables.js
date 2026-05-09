@@ -52,39 +52,32 @@ class PokerTable {
         try {
             if (this.disconnectTimers.has(Number(userId))) return;
             const player = this.players.get(socketId);
-            if (!player) return;
-
             const timeoutId = setTimeout(async () => {
                 const idlePlayers = idlePlayersMap.get(this.tableInfo.id) || [];
-                if (!idlePlayers.includes(Number(userId))) {
-                    idlePlayers.push(Number(userId));
-                    console.log(`[IDLE] User ${userId} marked as idle for table ${this.tableInfo.id}`);
+                if (!idlePlayers.find(id => id !== player.user.id)) {
+                    idlePlayers.push(player.user.id);
                 }
                 idlePlayersMap.set(this.tableInfo.id, idlePlayers);
             }, 30 * 60 * 1000); // 30 minutes
-            this.disconnectTimers.set(Number(userId), timeoutId);
+            this.disconnectTimers.set(userId, timeoutId);
         } catch (err) {
             console.error('[DISCONNECT] Error handling disconnect for user:', userId, err);
         }
     }
 
     handleReconnect(userId) {
-        const timeoutId = this.disconnectTimers.get(Number(userId));
+        const timeoutId = this.disconnectTimers.get(userId);
         if (timeoutId) {
             clearTimeout(timeoutId);
-            this.disconnectTimers.delete(Number(userId));
-        }
-        let idlePlayers = idlePlayersMap.get(this.tableInfo.id) || [];
-        if (idlePlayers.includes(Number(userId))) {
-            idlePlayers = idlePlayers.filter(id => id !== Number(userId));
+            this.disconnectTimers.delete(userId);
+            let idlePlayers = idlePlayersMap.get(this.tableInfo.id) || [];
+            idlePlayers = idlePlayers.filter(id => id !== userId);
             idlePlayersMap.set(this.tableInfo.id, idlePlayers);
-            console.log(`[RECONNECT] User ${userId} no longer idle for table ${this.tableInfo.id}`);
         }
     }
     
     async endGame() {
         try {
-            console.log(`[END GAME] Table ${this.tableInfo.id} hand ended.`);
             const table = this.table;
             const pokerTable = this;
             const tableSessionId = this.id;
@@ -174,9 +167,6 @@ class PokerTable {
                 for (const player of this.players.values()) {
                     if (player.seatIndex !== undefined) {
                         playerNames[player.seatIndex] = player.user.name;
-                        // *** EXCLUDING BUGGY BALANCE UPDATE LOGIC FROM CURRENT ***
-                        // The original logic from 'last' version is kept here.
-                        // Original 'last' logic:
                         const solde = await Soldes.findOne({ where: { userId: player.user.id } });
                         const cave = this.caves.get(player.user.id);
                         const stack = updatedStacks[player.seatIndex];
@@ -215,16 +205,21 @@ class PokerTable {
                     this.removePlayer(player.socketio.id);
                 }
 
-                // *** EXCLUDING BUGGY IDLE PLAYER REMOVAL LOGIC FROM CURRENT ***
-                // The original 'last' version logic for handling idle players is kept here.
-                // The current version added explicit removal of idle players in endGame, which might be too aggressive.
-                // This section is left empty to effectively use the logic from 'last'.
+                for (const player of this.players.values()) {
+                    if (idlePlayersMap.get(this.tableInfo.id)?.find(id => id === player.user.id)) {
+                        this.removePlayer(player.socketio.id);
+                    }
+                }
                 
                 setTimeout(() => {
                     for(const player of pokerTable.removedPlayers.values()) {
                         player.send("quitsuccess", {});
                     }
-                    // If any idle players were removed and need notification
+                    for (const player of this.players.values()) {
+                        if (idlePlayersMap.get(this.tableInfo.id)?.find(id => id === player.user.id)) {
+                            player.send('quitsuccess', {});
+                        }
+                    }
                     pokerTable.broadcastState();
                 }, 15000);
     
@@ -235,7 +230,7 @@ class PokerTable {
                         }
                         this.shareCards();
                         await sleep(5000);
-                        await pokerTable.startGame(); // Await startGame
+                        pokerTable.startGame();   
                     } catch (err) { }
                     pokerTable.broadcastState();
                     pokerTable.isShowDownInProgress = false;
@@ -244,7 +239,7 @@ class PokerTable {
                 pokerTable.broadcastState(true);
             }
         } catch (error) {
-          console.error('[END GAME] Global Error', error);
+          console.error('Error', error);
         }
     }
 
@@ -488,18 +483,14 @@ class PokerTable {
             if (player.seatIndex != undefined) {
                 try {
                     const seats = this.table.seats();
-                    const newStack = stacks[player.seatIndex];
-
-                    // Only stand up if we are actually removing them or updating their stack
                     if (seats[player.seatIndex] !== null) {
-                        this.table.standUp(player.seatIndex);
+                        this.table.standUp(player.seatIndex);  
                     }
-
-                    if (newStack !== undefined && newStack > 0) {
-                        this.table.sitDown(player.seatIndex, newStack);
+                    const stack = stacks[player.seatIndex];
+                    if(stack && stack > 0) {
+                        this.table.sitDown(player.seatIndex, stack);
                     } else {
-                        // Player is out of chips or decided to quit
-                        this.removedPlayers.set(player.socketio.id, player);
+                        this.removedPlayers.set(player.seatIndex, player);
                     }
                 } catch (err) {
                     console.error('[REPLACE PLAYER] ERR seat', player.seatIndex, err);
@@ -545,7 +536,7 @@ class PokerTable {
     }
 
     async checkStartConditions() {
-        if (!this.table.isHandInProgress() && !this.isShowDownInProgress && this.table.numActivePlayers() >= 2) {
+        if (!this.table.isHandInProgress() && !this.isShowDownInProgress && this.seatTaken.size >= 2) {
             await this.startGame();
         }
         try {
@@ -566,42 +557,8 @@ class PokerTable {
             console.error("Error refreshing table gameType:", err);
         }
 
-        for(const player of this.removedPlayers.values()) {
-            await this.removePlayer(player.socketio.id);
-            player.send("quitsuccess", {});
-        }
-        this.removedPlayers.clear();
-
-        if (this.table.numActivePlayers() < 2) {
-            console.log(`[START GAME] Table ${this.tableInfo.id} aborted: Not enough active players (${this.table.numActivePlayers()})`);
-            this.broadcastState();
-            return;
-        }
-
         // console.log(`[DEBUG] Starting Game - Type: ${this.gameType}`);
         this.foldedPlayers = new Set();
-
-        console.log(`[DEBUG startGame] Initial player count before removal: ${this.table.numActivePlayers()} (seats: ${JSON.stringify(this.table.seats())})`);
-        for(const player of this.removedPlayers.values()) {
-            await this.removePlayer(player.socketio.id);
-            player.send("quitsuccess", {});
-        }
-        this.removedPlayers.clear();
-
-        console.log(`[DEBUG startGame] Player count after removal: ${this.table.numActivePlayers()} (seats: ${JSON.stringify(this.table.seats())})`);
-        if (this.table.numActivePlayers() < 2) {
-            console.log(`[START GAME] Table ${this.tableInfo.id} aborted: Not enough active players (${this.table.numActivePlayers()}) before startHand.`);
-            this.broadcastState();
-            return;
-        }
-
-        console.log(`[DEBUG startGame] Player count before calling table.startHand(): ${this.table.numActivePlayers()} (seats: ${JSON.stringify(this.table.seats())})`);
-
-        if (this.table.numActivePlayers() < 2) {
-            console.error(`[CRITICAL] Table ${this.tableInfo.id} aborting hand start: Player count dropped below 2 (active: ${this.table.numActivePlayers()})`);
-            return;
-        }
-
         this.table.startHand();
         this.activePlayers = this.table.numActivePlayers();
         this.lastPots = [];
@@ -617,6 +574,12 @@ class PokerTable {
                 this.manualPots[this.roundIndex].push({seatIndex: i, betSize: seats[i].betSize});
             }
         }
+        
+        for(const player of this.removedPlayers.values()) {
+            this.removePlayer(player.socketio.id);
+            player.send("quitsuccess", {});
+        }
+        this.removedPlayers.clear();
 
         this.playerInHandInitial = new Set();
         const playersInHand = this.table.handPlayers();
@@ -742,11 +705,7 @@ class PokerTable {
             playerTables = playerTables.filter(table => Number(table) !== Number(this.tableInfo.id));
             playerTablesMap.set(player.user.id, playerTables);
            
-            const seats = this.table.seats();
-            if (seats[seatIndex] !== null) {
-                this.table.standUp(seatIndex);
-            }
-            
+            this.table.standUp(seatIndex);
             this.avatars = this.avatars.filter(avt => avt.userId !== player.user.id);
             playerCavesMap.delete(player.user.id);
             return true;
