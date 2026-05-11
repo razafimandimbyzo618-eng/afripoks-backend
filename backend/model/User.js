@@ -3,12 +3,15 @@ const sequelize = require('../config/Db');
 const bcrypt = require('bcrypt');
 
 const User = sequelize.define('User', {
+  id: {
+    type: DataTypes.INTEGER,
+    autoIncrement: true,
+    primaryKey: true,
+  },
   name: {
     type: DataTypes.STRING,
-    unique: true,
     allowNull: false,
   },
-
   email: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -17,14 +20,37 @@ const User = sequelize.define('User', {
       isEmail: true,
     },
   },
-
   password: {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  chips: {
+    type: DataTypes.DECIMAL(15, 2),
+    defaultValue: 1000.00,
+  },
+  avatar_url: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  mobile_money_provider: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  mobile_money_number: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+  },
+  mobile_money_account_name: {
+    type: DataTypes.STRING(100),
+    allowNull: true,
+  },
+  isAdmin: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+  }
 }, {
   tableName: 'users',
-  timestamps: true,
+  timestamps: false,
   hooks: {
     beforeCreate: async (user) => {
       if (user.password) {

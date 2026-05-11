@@ -1,6 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const sequelize = require("./backend/config/Db");
 const authRoutes = require("./backend/routes/authRoutes");
 const authAdminRoutes = require("./backend/routes/UserAdminRoutes");
@@ -17,6 +18,7 @@ const protect = require('./backend/middleware/authMiddleware');
 const { serverSocket } = require("./backend/serverSocket");
 const historiqueRoutes = require("./backend/routes/HistoriqueMainRoutes");
 const userConnectedRoutes = require("./backend/routes/userConnected");
+const userRoutes = require("./backend/routes/userRoutes");
 
 
 require('./backend/model/Envoie');
@@ -43,6 +45,7 @@ const corsOptions = {
 const app = express();
 
 app.use(cors(corsOptions));
+app.use('/uploads/avatars', express.static(path.join(__dirname, 'backend', 'public', 'avatars')));
 
 
 app.use(express.json({ extended: false }));
@@ -50,16 +53,17 @@ app.use(express.json({ extended: false }));
 app.use("/api/auth", authRoutes);
 app.use("/api/auth/admin", authAdminRoutes);
 app.use("/api", soldeRoutes);
+app.use("/api/tables", tableRoutes);
 app.use("/api", protect, soldeAdminRoutes);
 app.use("/api/depot", protect, depotMobileRoutes);
 app.use("/api/depot", protect, depotCryptoRoutes);
 app.use("/api", protect, typeCrypto);
 app.use("/api/retrait", protect, retraitMobile);
 app.use("/api/retrait", protect, retraitCrypto);
-app.use("/api", protect, tableRoutes);
 app.use("/api", protect, EnvoieRoutes);
 app.use("/api/historique", protect, historiqueRoutes);
 app.use("/api/userConnected", userConnectedRoutes);
+app.use("/api/users", userRoutes);
 
 const httpServer = serverSocket(app);   
 

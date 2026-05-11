@@ -547,6 +547,12 @@ class PokerTable {
     }
 
     async startGame() {
+        // Double-check to prevent starting with < 2 players
+        if (this.seatTaken.size < 2) {
+            console.warn(`[TABLE ${this.tableInfo.id}] Cannot start hand: only ${this.seatTaken.size} players seated.`);
+            return;
+        }
+
         try {
             const latestTable = await Table.findByPk(this.tableInfo.id);
             if (latestTable) {
@@ -705,11 +711,7 @@ class PokerTable {
             playerTables = playerTables.filter(table => Number(table) !== Number(this.tableInfo.id));
             playerTablesMap.set(player.user.id, playerTables);
            
-            const seats = this.table.seats();
-            if (seats[seatIndex] !== null) {
-                this.table.standUp(seatIndex);
-            }
-            
+            this.table.standUp(seatIndex);
             this.avatars = this.avatars.filter(avt => avt.userId !== player.user.id);
             playerCavesMap.delete(player.user.id);
             return true;
@@ -805,19 +807,8 @@ class PokerTable {
     }
 
     broadcastState(isStart = false) {
-        const handInProgress = this.table.isHandInProgress();
-        
-        // Ensure betting round is ended if finished before calculating state
-        if (handInProgress) {
-            if(!this.table.isBettingRoundInProgress() && !this.table.areBettingRoundsCompleted()) {
-                try { 
-                    this.table.endBettingRound(); 
-                    // If we just ended a round, we might need to reset round-specific data
-                } catch(ignored) {}
-            }
-        }
-
         const activeSeats = this.getActiveSeats();
+        const handInProgress = this.table.isHandInProgress();
         const tableId = this.id;
         const button = handInProgress ? this.table.button() : null;
         
@@ -840,6 +831,9 @@ class PokerTable {
 
         let toAct = null;
         if (handInProgress) {
+            if(!this.table.isBettingRoundInProgress() && !this.table.areBettingRoundsCompleted()) {
+                try { this.table.endBettingRound(); } catch(ignored) {}
+            }
             if(this.table.isBettingRoundInProgress()) {
                 toAct = this.table.playerToAct();
             } else if (this.table.areBettingRoundsCompleted()) {

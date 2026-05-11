@@ -17,7 +17,7 @@ const Soldes = sequelize.define('Soldes', {
   }
 }, {
   tableName: 'solde',
-  timestamps: true,
+  timestamps: false,
 });
 
 Soldes.belongsTo(User, {
