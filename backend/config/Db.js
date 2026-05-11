@@ -12,6 +12,8 @@ console.log('Variables d\'environnement chargées:', {
   dbName: process.env.DB_NAME
 });
 
+ console.log('Dialect:', process.env.DB_DIALECT);
+
 const sequelize = new Sequelize(
   process.env.DB_NAME,
   process.env.DB_USER,
@@ -32,5 +34,5 @@ const sequelize = new Sequelize(
     }
   }
 );
-
+//connexion  dot env
 module.exports = sequelize;
